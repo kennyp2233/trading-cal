@@ -1,84 +1,20 @@
-// app/dashboard/page.js
+// src/app/dashboard/page.js
 'use client';
 import { useState, useEffect } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
 import { ArrowUpRight, ArrowDownRight, Activity, AlertTriangle } from 'lucide-react';
+import { useAppContext } from '../../components/AppProvider'; // Asegúrate de que la ruta sea correcta
 
 export default function Dashboard() {
-    const [portfolioData, setPortfolioData] = useState(null);
-    const [activeOperations, setActiveOperations] = useState([]);
+    const { portfolio, activeOperations } = useAppContext();
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
     useEffect(() => {
-        // Fetch portfolio data
-        const fetchDashboardData = async () => {
-            try {
-                setLoading(true);
-
-                // En producción, estos serían llamadas a tu API
-                const portfolioResponse = await fetch('/api/portfolio');
-                const operationsResponse = await fetch('/api/operations?status=OPEN');
-
-                if (!portfolioResponse.ok || !operationsResponse.ok) {
-                    throw new Error('Error al cargar datos del dashboard');
-                }
-
-                const portfolioData = await portfolioResponse.json();
-                const operationsData = await operationsResponse.json();
-
-                setPortfolioData(portfolioData);
-                setActiveOperations(operationsData);
-            } catch (err) {
-                setError(err.message);
-                // Para desarrollo, usar datos de ejemplo
-                setPortfolioData({
-                    total_balance: 93,
-                    paxg_balance: 42,
-                    eth_balance: 33,
-                    altcoin_balance: 18,
-                    premercado_balance: 0,
-                    distribution: [
-                        { name: 'PAXG', value: 42, percentage: 45 },
-                        { name: 'ETH', value: 33, percentage: 35 },
-                        { name: 'Altcoins', value: 18, percentage: 20 }
-                    ]
-                });
-
-                setActiveOperations([
-                    {
-                        id: 1,
-                        asset_name: 'ETH',
-                        strategy_type: 'ETH',
-                        entry_price: 1800,
-                        amount: 0.018,
-                        position_size: 32.4,
-                        stop_loss: 1710,
-                        take_profit_1: 1910,
-                        status: 'OPEN',
-                        entry_date: '2025-04-10T14:30:00',
-                        current_profit_loss: 2.5
-                    },
-                    {
-                        id: 2,
-                        asset_name: 'SHIB',
-                        strategy_type: 'ALTCOIN',
-                        entry_price: 0.00002,
-                        amount: 400000,
-                        position_size: 8,
-                        stop_loss: 0.000018,
-                        take_profit_1: 0.000023,
-                        status: 'OPEN',
-                        entry_date: '2025-04-11T10:15:00',
-                        current_profit_loss: -3.2
-                    }
-                ]);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchDashboardData();
+        // Simular carga de datos (para el MVP nos basamos en los datos del contexto)
+        setTimeout(() => {
+            setLoading(false);
+        }, 500);
     }, []);
 
     // Colores para el gráfico de distribución
@@ -109,7 +45,7 @@ export default function Dashboard() {
                             <ResponsiveContainer width="100%" height="100%">
                                 <PieChart>
                                     <Pie
-                                        data={portfolioData.distribution}
+                                        data={portfolio.distribution}
                                         cx="50%"
                                         cy="50%"
                                         innerRadius={40}
@@ -118,7 +54,7 @@ export default function Dashboard() {
                                         dataKey="value"
                                         label={({ name, percentage }) => `${name}: ${percentage}%`}
                                     >
-                                        {portfolioData.distribution.map((entry, index) => (
+                                        {portfolio.distribution.map((entry, index) => (
                                             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                         ))}
                                     </Pie>
@@ -127,9 +63,9 @@ export default function Dashboard() {
                             </ResponsiveContainer>
                         </div>
                         <div className="ml-4">
-                            <div className="font-bold text-2xl mb-2">${portfolioData.total_balance}</div>
+                            <div className="font-bold text-2xl mb-2">${portfolio.total_balance}</div>
                             <div className="grid grid-cols-1 gap-2">
-                                {portfolioData.distribution.map((item, index) => (
+                                {portfolio.distribution.map((item, index) => (
                                     <div key={index} className="flex items-center">
                                         <div className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: COLORS[index] }}></div>
                                         <div>{item.name}: ${item.value} ({item.percentage}%)</div>
