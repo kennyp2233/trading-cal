@@ -1,6 +1,6 @@
 // app/api/operations/route.js
 import { NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
+import { getDb } from  '../../../lib/db/schema';
 
 // GET /api/operations - Obtener operaciones
 export async function GET(request) {

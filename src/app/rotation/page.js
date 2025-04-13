@@ -1,17 +1,32 @@
 // app/rotation/page.js
 'use client';
 import { useState, useEffect } from 'react';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, AlertCircle } from 'lucide-react';
+import { useAppContext } from '../../components/AppProvider';
 
 export default function RotationPage() {
-    const [portfolio, setPortfolio] = useState({
-        total_balance: 93,
-        paxg_balance: 42,
-        eth_balance: 33,
-        altcoin_balance: 18
-    });
+    const {
+        portfolio,
+        rotationHistory,
+        executeRotation,
+        refreshRotations,
+        refreshPortfolio,
+        loading: contextLoading,
+        error: contextError
+    } = useAppContext();
 
-    const [rotationRules, setRotationRules] = useState([
+    const [fromStrategy, setFromStrategy] = useState('ETH');
+    const [toStrategy, setToStrategy] = useState('PAXG');
+    const [percentage, setPercentage] = useState(10);
+    const [conditionText, setConditionText] = useState('');
+    const [rotationAmount, setRotationAmount] = useState(0);
+    const [resultingDistribution, setResultingDistribution] = useState({});
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
+    const [success, setSuccess] = useState(null);
+
+    // Reglas de rotación predefinidas
+    const [rotationRules] = useState([
         {
             id: 1,
             condition: 'ETH rompe resistencia clave con volumen',
@@ -62,26 +77,29 @@ export default function RotationPage() {
         }
     ]);
 
-    const [fromStrategy, setFromStrategy] = useState('ETH');
-    const [toStrategy, setToStrategy] = useState('PAXG');
-    const [percentage, setPercentage] = useState(10);
-    const [conditionText, setConditionText] = useState('');
-    const [rotationAmount, setRotationAmount] = useState(0);
-    const [resultingDistribution, setResultingDistribution] = useState({});
-
     // Calcular rotación cuando cambian los inputs
     useEffect(() => {
         calculateRotation();
     }, [fromStrategy, toStrategy, percentage, portfolio]);
 
     const calculateRotation = () => {
-        const fromBalance = portfolio[`${fromStrategy.toLowerCase()}_balance`];
+        if (!portfolio || !portfolio.paxg_balance) return;
+
+        const fromBalance = getBalanceByStrategy(fromStrategy);
         const amount = (fromBalance * percentage) / 100;
 
         setRotationAmount(amount);
 
         // Calcular nueva distribución
-        const newDistribution = { ...portfolio };
+        const newDistribution = {
+            total_balance: portfolio.total_balance,
+            paxg_balance: portfolio.paxg_balance,
+            eth_balance: portfolio.eth_balance,
+            altcoin_balance: portfolio.altcoin_balance,
+            premercado_balance: portfolio.premercado_balance || 0
+        };
+
+        // Restar del origen
         newDistribution[`${fromStrategy.toLowerCase()}_balance`] -= amount;
 
         if (toStrategy === 'ETH/PAXG') {
@@ -95,45 +113,86 @@ export default function RotationPage() {
         setResultingDistribution(newDistribution);
     };
 
+    const getBalanceByStrategy = (strategy) => {
+        if (!portfolio) return 0;
+        switch (strategy) {
+            case 'PAXG': return portfolio.paxg_balance;
+            case 'ETH': return portfolio.eth_balance;
+            case 'ALTCOIN': return portfolio.altcoin_balance;
+            default: return 0;
+        }
+    };
+
     const handleRotationSubmit = async (e) => {
         e.preventDefault();
+        setLoading(true);
+        setError(null);
+        setSuccess(null);
 
         try {
-            // En producción: Enviar a API
-            const response = await fetch('/api/rotations', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    from_strategy: fromStrategy,
-                    to_strategy: toStrategy,
-                    percentage,
-                    amount: rotationAmount,
-                    trigger_condition: conditionText,
-                }),
-            });
+            // Preparar datos para la rotación
+            const rotationData = {
+                from_strategy: fromStrategy,
+                to_strategy: toStrategy,
+                amount: rotationAmount,
+                percentage_of_origin: percentage,
+                trigger_condition: conditionText,
+                notes: ''
+            };
 
-            if (!response.ok) {
-                throw new Error('Error al guardar la rotación');
-            }
+            // Ejecutar la rotación a través del contexto
+            await executeRotation(rotationData);
 
-            alert('Rotación registrada con éxito');
+            // Mostrar mensaje de éxito
+            setSuccess('Rotación registrada con éxito');
 
-            // Actualizar el portfolio local con la nueva distribución
-            setPortfolio(resultingDistribution);
+            // Actualizar datos
+            await refreshPortfolio();
+            await refreshRotations();
 
             // Limpiar formulario
             setPercentage(10);
             setConditionText('');
         } catch (error) {
-            alert(`Error: ${error.message}`);
+            console.error('Error al ejecutar rotación:', error);
+            setError(`Error: ${error.message || 'No se pudo completar la rotación'}`);
+        } finally {
+            setLoading(false);
         }
     };
+
+    if (contextLoading) {
+        return <div className="p-6 flex justify-center items-center h-64">
+            <div className="text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+                <p className="text-gray-600">Cargando datos del sistema...</p>
+            </div>
+        </div>;
+    }
+
+    if (contextError) {
+        return <div className="p-6 bg-red-50 text-red-700 rounded-lg">
+            Error: {contextError}. Por favor, recarga la página o contacta soporte.
+        </div>;
+    }
 
     return (
         <div className="p-6">
             <h1 className="text-2xl font-bold mb-6">Sistema de Rotación de Estrategias</h1>
+
+            {/* Alertas */}
+            {error && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-6 flex items-start">
+                    <AlertCircle size={18} className="mr-2 mt-0.5" />
+                    <div>{error}</div>
+                </div>
+            )}
+
+            {success && (
+                <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded mb-6">
+                    {success}
+                </div>
+            )}
 
             {/* Matriz de Decisión */}
             <div className="bg-white rounded-lg shadow p-4 mb-6">
@@ -157,17 +216,17 @@ export default function RotationPage() {
                                     <td className="px-6 py-4 whitespace-nowrap text-sm">{rule.condition}</td>
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         <span className={`px-2 py-1 rounded text-xs ${rule.fromStrategy === 'PAXG' ? 'bg-yellow-100 text-yellow-800' :
-                                                rule.fromStrategy === 'ETH' ? 'bg-blue-100 text-blue-800' :
-                                                    'bg-purple-100 text-purple-800'
+                                            rule.fromStrategy === 'ETH' ? 'bg-blue-100 text-blue-800' :
+                                                'bg-purple-100 text-purple-800'
                                             }`}>
                                             {rule.fromStrategy}
                                         </span>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         <span className={`px-2 py-1 rounded text-xs ${rule.toStrategy === 'PAXG' ? 'bg-yellow-100 text-yellow-800' :
-                                                rule.toStrategy === 'ETH' ? 'bg-blue-100 text-blue-800' :
-                                                    rule.toStrategy === 'ETH/PAXG' ? 'bg-green-100 text-green-800' :
-                                                        'bg-purple-100 text-purple-800'
+                                            rule.toStrategy === 'ETH' ? 'bg-blue-100 text-blue-800' :
+                                                rule.toStrategy === 'ETH/PAXG' ? 'bg-green-100 text-green-800' :
+                                                    'bg-purple-100 text-purple-800'
                                             }`}>
                                             {rule.toStrategy}
                                         </span>
@@ -277,8 +336,9 @@ export default function RotationPage() {
                         <button
                             type="submit"
                             className="w-full py-2 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded"
+                            disabled={loading}
                         >
-                            Ejecutar Rotación
+                            {loading ? 'Procesando...' : 'Ejecutar Rotación'}
                         </button>
                     </form>
                 </div>
@@ -292,25 +352,25 @@ export default function RotationPage() {
                         <div className="grid grid-cols-3 gap-4">
                             <div className="bg-yellow-50 p-3 rounded border border-yellow-100">
                                 <div className="text-sm text-yellow-800">PAXG</div>
-                                <div className="font-bold">${portfolio.paxg_balance.toFixed(2)}</div>
+                                <div className="font-bold">${portfolio?.paxg_balance?.toFixed(2) || '0.00'}</div>
                                 <div className="text-xs text-gray-500">
-                                    {((portfolio.paxg_balance / portfolio.total_balance) * 100).toFixed(1)}%
+                                    {portfolio?.total_balance ? ((portfolio.paxg_balance / portfolio.total_balance) * 100).toFixed(1) : 0}%
                                 </div>
                             </div>
 
                             <div className="bg-blue-50 p-3 rounded border border-blue-100">
                                 <div className="text-sm text-blue-800">ETH</div>
-                                <div className="font-bold">${portfolio.eth_balance.toFixed(2)}</div>
+                                <div className="font-bold">${portfolio?.eth_balance?.toFixed(2) || '0.00'}</div>
                                 <div className="text-xs text-gray-500">
-                                    {((portfolio.eth_balance / portfolio.total_balance) * 100).toFixed(1)}%
+                                    {portfolio?.total_balance ? ((portfolio.eth_balance / portfolio.total_balance) * 100).toFixed(1) : 0}%
                                 </div>
                             </div>
 
                             <div className="bg-purple-50 p-3 rounded border border-purple-100">
                                 <div className="text-sm text-purple-800">ALTCOIN</div>
-                                <div className="font-bold">${portfolio.altcoin_balance.toFixed(2)}</div>
+                                <div className="font-bold">${portfolio?.altcoin_balance?.toFixed(2) || '0.00'}</div>
                                 <div className="text-xs text-gray-500">
-                                    {((portfolio.altcoin_balance / portfolio.total_balance) * 100).toFixed(1)}%
+                                    {portfolio?.total_balance ? ((portfolio.altcoin_balance / portfolio.total_balance) * 100).toFixed(1) : 0}%
                                 </div>
                             </div>
                         </div>
@@ -384,39 +444,46 @@ export default function RotationPage() {
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Desde</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hacia</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Monto</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">%</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Condición</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Resultado</th>
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                            <tr>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">10/04/2025</td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                    <span className="px-2 py-1 rounded text-xs bg-purple-100 text-purple-800">ALTCOIN</span>
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                    <span className="px-2 py-1 rounded text-xs bg-yellow-100 text-yellow-800">PAXG</span>
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap">$5.20</td>
-                                <td className="px-6 py-4">Altcoin generó +30% en 24h</td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                    <span className="px-2 py-1 rounded text-xs bg-green-100 text-green-800">POSITIVO</span>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">08/04/2025</td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                    <span className="px-2 py-1 rounded text-xs bg-yellow-100 text-yellow-800">PAXG</span>
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                    <span className="px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">ETH</span>
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap">$3.80</td>
-                                <td className="px-6 py-4">ETH rompió resistencia en volumen</td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                    <span className="px-2 py-1 rounded text-xs bg-red-100 text-red-800">NEGATIVO</span>
-                                </td>
-                            </tr>
+                            {rotationHistory && rotationHistory.length > 0 ? (
+                                rotationHistory.map((rotation) => (
+                                    <tr key={rotation.id}>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                            {new Date(rotation.rotation_date).toLocaleDateString()}
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            <span className={`px-2 py-1 rounded text-xs ${rotation.from_strategy === 'PAXG' ? 'bg-yellow-100 text-yellow-800' :
+                                                    rotation.from_strategy === 'ETH' ? 'bg-blue-100 text-blue-800' :
+                                                        'bg-purple-100 text-purple-800'
+                                                }`}>
+                                                {rotation.from_strategy}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            <span className={`px-2 py-1 rounded text-xs ${rotation.to_strategy === 'PAXG' ? 'bg-yellow-100 text-yellow-800' :
+                                                    rotation.to_strategy === 'ETH' ? 'bg-blue-100 text-blue-800' :
+                                                        rotation.to_strategy === 'ETH/PAXG' ? 'bg-green-100 text-green-800' :
+                                                            'bg-purple-100 text-purple-800'
+                                                }`}>
+                                                {rotation.to_strategy}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap">${rotation.amount.toFixed(2)}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap">{rotation.percentage_of_origin}%</td>
+                                        <td className="px-6 py-4">{rotation.trigger_condition}</td>
+                                    </tr>
+                                ))
+                            ) : (
+                                <tr>
+                                    <td colSpan="6" className="px-6 py-4 text-center text-gray-500">
+                                        No hay rotaciones registradas aún
+                                    </td>
+                                </tr>
+                            )}
                         </tbody>
                     </table>
                 </div>

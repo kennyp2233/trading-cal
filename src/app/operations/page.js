@@ -3,8 +3,11 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { PlusCircle, Filter, ArrowUpDown, Download, BarChart4 } from 'lucide-react';
+import { useAppContext } from '../../components/AppProvider';
 
 export default function OperationsPage() {
+    const { allOperations, refreshOperations, loading: contextLoading, error: contextError } = useAppContext();
+
     const [operations, setOperations] = useState([]);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('ALL');
@@ -18,148 +21,77 @@ export default function OperationsPage() {
         worstTrade: 0
     });
 
+    // Cargar y procesar operaciones cuando cambian las dependencias
     useEffect(() => {
-        // Fetch operations data
-        const fetchOperations = async () => {
+        const processOperations = async () => {
             try {
                 setLoading(true);
 
-                // En producción: Esta sería una llamada a tu API
-                // const response = await fetch(`/api/operations?filter=${filter}&sort=${sortBy}&direction=${sortDirection}`);
-                // const data = await response.json();
-                // setOperations(data);
+                // Buscar operaciones desde el AppContext o directamente de la API
+                let operationsData = [...allOperations];
 
-                // Para desarrollo, usamos datos de ejemplo
-                setTimeout(() => {
-                    const sampleOperations = [
-                        {
-                            id: 1,
-                            asset_name: 'ETH',
-                            strategy_type: 'ETH',
-                            entry_price: 1800,
-                            exit_price: 1920,
-                            amount: 0.018,
-                            position_size: 32.4,
-                            stop_loss: 1710,
-                            take_profit_1: 1910,
-                            status: 'CLOSED',
-                            entry_date: '2025-04-01T14:30:00',
-                            exit_date: '2025-04-03T10:15:00',
-                            profit_loss: 2.16,
-                            profit_loss_percentage: 6.67,
-                            entry_reason: 'Pullback a EMA 20 en tendencia alcista',
-                            exit_reason: 'Toma de ganancias en TP1'
-                        },
-                        {
-                            id: 2,
-                            asset_name: 'SHIB',
-                            strategy_type: 'ALTCOIN',
-                            entry_price: 0.00002,
-                            exit_price: 0.000018,
-                            amount: 400000,
-                            position_size: 8,
-                            stop_loss: 0.000018,
-                            take_profit_1: 0.000023,
-                            status: 'CLOSED',
-                            entry_date: '2025-04-05T10:15:00',
-                            exit_date: '2025-04-05T14:30:00',
-                            profit_loss: -0.8,
-                            profit_loss_percentage: -10,
-                            entry_reason: 'Rebote en soporte con volumen creciente',
-                            exit_reason: 'Stop loss activado'
-                        },
-                        {
-                            id: 3,
-                            asset_name: 'ETH',
-                            strategy_type: 'ETH',
-                            entry_price: 1850,
-                            exit_price: null,
-                            amount: 0.016,
-                            position_size: 29.6,
-                            stop_loss: 1760,
-                            take_profit_1: 1950,
-                            status: 'OPEN',
-                            entry_date: '2025-04-10T09:45:00',
-                            exit_date: null,
-                            profit_loss: null,
-                            profit_loss_percentage: null,
-                            entry_reason: 'Rompimiento de resistencia con incremento de volumen',
-                            exit_reason: null
-                        },
-                        {
-                            id: 4,
-                            asset_name: 'ADA',
-                            strategy_type: 'ALTCOIN',
-                            entry_price: 0.45,
-                            exit_price: 0.52,
-                            amount: 200,
-                            position_size: 90,
-                            stop_loss: 0.42,
-                            take_profit_1: 0.50,
-                            status: 'CLOSED',
-                            entry_date: '2025-03-28T11:20:00',
-                            exit_date: '2025-03-30T16:45:00',
-                            profit_loss: 14,
-                            profit_loss_percentage: 15.56,
-                            entry_reason: 'Listado en nuevo exchange con aumento de liquidez',
-                            exit_reason: 'Toma de ganancias parcial en TP1 y trailing stop para el resto'
-                        }
-                    ];
-
-                    // Filtrar operaciones según el filtro actual
-                    let filteredOperations = sampleOperations;
-                    if (filter !== 'ALL') {
-                        filteredOperations = sampleOperations.filter(op => op.status === filter);
+                if (operationsData.length === 0 && !contextLoading) {
+                    // Si no hay datos en el contexto, intentar cargarlos directamente
+                    const response = await fetch(`/api/operations?status=${filter !== 'ALL' ? filter : ''}&sortBy=${sortBy}&sortDir=${sortDirection}`);
+                    if (response.ok) {
+                        operationsData = await response.json();
+                    } else {
+                        throw new Error('Error al cargar operaciones');
                     }
+                }
 
-                    // Ordenar operaciones
-                    filteredOperations.sort((a, b) => {
-                        if (sortBy === 'date') {
-                            const dateA = new Date(a.entry_date);
-                            const dateB = new Date(b.entry_date);
-                            return sortDirection === 'asc' ? dateA - dateB : dateB - dateA;
-                        } else if (sortBy === 'profit') {
-                            const profitA = a.profit_loss_percentage || 0;
-                            const profitB = b.profit_loss_percentage || 0;
-                            return sortDirection === 'asc' ? profitA - profitB : profitB - profitA;
-                        }
-                        return 0;
-                    });
+                // Filtrar operaciones según el filtro actual
+                let filteredOperations = operationsData;
+                if (filter !== 'ALL') {
+                    filteredOperations = operationsData.filter(op => op.status === filter);
+                }
 
-                    setOperations(filteredOperations);
+                // Ordenar operaciones
+                filteredOperations.sort((a, b) => {
+                    if (sortBy === 'date') {
+                        const dateA = new Date(a.entry_date);
+                        const dateB = new Date(b.entry_date);
+                        return sortDirection === 'asc' ? dateA - dateB : dateB - dateA;
+                    } else if (sortBy === 'profit') {
+                        const profitA = a.profit_loss_percentage || 0;
+                        const profitB = b.profit_loss_percentage || 0;
+                        return sortDirection === 'asc' ? profitA - profitB : profitB - profitA;
+                    }
+                    return 0;
+                });
 
-                    // Calcular estadísticas
-                    const closedOperations = sampleOperations.filter(op => op.status === 'CLOSED');
-                    const totalOps = closedOperations.length;
-                    const winningOps = closedOperations.filter(op => op.profit_loss_percentage > 0).length;
-                    const winRate = totalOps > 0 ? (winningOps / totalOps) * 100 : 0;
+                setOperations(filteredOperations);
 
-                    const profitLossValues = closedOperations.map(op => op.profit_loss_percentage);
-                    const avgProfitLoss = profitLossValues.length > 0
-                        ? profitLossValues.reduce((sum, val) => sum + val, 0) / profitLossValues.length
-                        : 0;
+                // Calcular estadísticas
+                const closedOperations = operationsData.filter(op => op.status === 'CLOSED');
+                const totalOps = closedOperations.length;
+                const winningOps = closedOperations.filter(op => op.profit_loss_percentage > 0).length;
+                const winRate = totalOps > 0 ? (winningOps / totalOps) * 100 : 0;
 
-                    const bestTrade = profitLossValues.length > 0 ? Math.max(...profitLossValues) : 0;
-                    const worstTrade = profitLossValues.length > 0 ? Math.min(...profitLossValues) : 0;
+                const profitLossValues = closedOperations.map(op => op.profit_loss_percentage || 0);
+                const avgProfitLoss = profitLossValues.length > 0
+                    ? profitLossValues.reduce((sum, val) => sum + val, 0) / profitLossValues.length
+                    : 0;
 
-                    setStats({
-                        totalOperations: totalOps,
-                        winRate,
-                        avgProfitLoss,
-                        bestTrade,
-                        worstTrade
-                    });
+                const bestTrade = profitLossValues.length > 0 ? Math.max(...profitLossValues) : 0;
+                const worstTrade = profitLossValues.length > 0 ? Math.min(...profitLossValues) : 0;
 
-                    setLoading(false);
-                }, 500);
+                setStats({
+                    totalOperations: totalOps,
+                    winRate,
+                    avgProfitLoss,
+                    bestTrade,
+                    worstTrade
+                });
             } catch (error) {
-                console.error('Error fetching operations:', error);
+                console.error('Error procesando operaciones:', error);
+            } finally {
                 setLoading(false);
             }
         };
 
-        fetchOperations();
-    }, [filter, sortBy, sortDirection]);
+        processOperations();
+    }, [filter, sortBy, sortDirection, allOperations, contextLoading]);
 
     const handleFilterChange = (newFilter) => {
         setFilter(newFilter);
@@ -218,6 +150,34 @@ export default function OperationsPage() {
         link.click();
         document.body.removeChild(link);
     };
+
+    // Manejar cierre de operación
+    const handleCloseOperation = async (id) => {
+        try {
+            // Redirigir a una página dedicada para cerrar la operación
+            // En un MVP completo, podríamos implementar un modal para esto
+            alert(`Se redirigirá a una página para cerrar la operación ${id}`);
+            // window.location.href = `/operations/close/${id}`;
+        } catch (error) {
+            console.error('Error al intentar cerrar operación:', error);
+            alert('Error al intentar cerrar la operación');
+        }
+    };
+
+    if (contextLoading || loading) {
+        return <div className="p-6 flex justify-center items-center h-64">
+            <div className="text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+                <p className="text-gray-600">Cargando operaciones...</p>
+            </div>
+        </div>;
+    }
+
+    if (contextError) {
+        return <div className="p-6 bg-red-50 text-red-700 rounded-lg">
+            Error: {contextError}. Por favor, recarga la página o contacta soporte.
+        </div>;
+    }
 
     return (
         <div className="p-6">
@@ -316,6 +276,14 @@ export default function OperationsPage() {
                         <Download size={14} className="mr-1" />
                         Exportar
                     </button>
+
+                    <button
+                        className="flex items-center px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50"
+                        onClick={refreshOperations}
+                    >
+                        <BarChart4 size={14} className="mr-1" />
+                        Actualizar
+                    </button>
                 </div>
             </div>
 
@@ -401,9 +369,14 @@ export default function OperationsPage() {
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                             <div className="flex space-x-2">
-                                                <button className="text-indigo-600 hover:text-indigo-900">Ver</button>
+                                                <Link href={`/operations/${op.id}`} className="text-indigo-600 hover:text-indigo-900">Ver</Link>
                                                 {op.status === 'OPEN' && (
-                                                    <button className="text-red-600 hover:text-red-900">Cerrar</button>
+                                                    <button
+                                                        className="text-red-600 hover:text-red-900"
+                                                        onClick={() => handleCloseOperation(op.id)}
+                                                    >
+                                                        Cerrar
+                                                    </button>
                                                 )}
                                             </div>
                                         </td>
